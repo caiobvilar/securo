@@ -162,6 +162,12 @@
   animation: securo-highlight-flash 2.4s ease-out;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .securo-highlight-flash {
+    animation: none;
+  }
+}
+
 /* Soft ambient aurora for the auth brand panel. Drifting, blurred purple
    blobs over a deep indigo base — slow enough to feel alive, not busy.
    Only transform/opacity animate, never layout. */

@@ -153,6 +153,10 @@ export interface Account {
   payment_due_day: number | null
   next_close_date: string | null
   next_due_date: string | null
+  // Synced credit-card bill the user is about to pay (credit_card only).
+  // List surfaces show this instead of the lifetime balance when set.
+  current_bill_total: number | null
+  current_bill_due_date: string | null // YYYY-MM-DD
   minimum_payment: number | null
   card_brand: string | null
   card_level: string | null

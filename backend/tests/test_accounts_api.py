@@ -720,3 +720,88 @@ async def test_get_account_bills_rejects_invalid_limit(
         f"/api/accounts/{cc.id}/bills", headers=auth_headers, params={"limit": 0},
     )
     assert resp.status_code == 422  # Query(ge=1) bound
+
+
+# ---------------------------------------------------------------------------
+# current_bill_total / current_bill_due_date (show only what's due now)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_account_cc_attaches_current_bill(
+    client: AsyncClient, auth_headers, session: AsyncSession, test_user,
+):
+    """GET /accounts/{id} for a card with a synced bill exposes the amount
+    due on the next fatura, not the lifetime balance."""
+    cc = await _make_cc_account(session, test_user.id, "Nubank")
+    await _make_bill(
+        session, test_user.id, cc.id,
+        external_id="b-old", due_date=_date(2025, 1, 5),
+    )
+    await _make_bill(
+        session, test_user.id, cc.id,
+        external_id="b-next", due_date=_date(2099, 5, 5), total="543.21",
+    )
+
+    resp = await client.get(f"/api/accounts/{cc.id}", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_bill_total"] == 543.21
+    assert data["current_bill_due_date"] == "2099-05-05"
+
+
+@pytest.mark.asyncio
+async def test_get_account_cc_all_bills_past_uses_most_recent(
+    client: AsyncClient, auth_headers, session: AsyncSession, test_user,
+):
+    """If every known bill is past due, the most recent one is the amount
+    still owed (the user hasn't paid it yet)."""
+    cc = await _make_cc_account(session, test_user.id, "Itaú")
+    await _make_bill(
+        session, test_user.id, cc.id,
+        external_id="b-old", due_date=_date(2025, 1, 5), total="10.00",
+    )
+    await _make_bill(
+        session, test_user.id, cc.id,
+        external_id="b-recent", due_date=_date(2025, 6, 5), total="77.00",
+    )
+
+    resp = await client.get(f"/api/accounts/{cc.id}", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_bill_total"] == 77.0
+    assert data["current_bill_due_date"] == "2025-06-05"
+
+
+@pytest.mark.asyncio
+async def test_get_account_cc_no_bills_leaves_fields_null(
+    client: AsyncClient, auth_headers, session: AsyncSession, test_user,
+):
+    """Cards without synced bills keep both fields None — frontend falls
+    back to the lifetime balance."""
+    cc = await _make_cc_account(session, test_user.id, "Manual CC")
+    resp = await client.get(f"/api/accounts/{cc.id}", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_bill_total"] is None
+    assert data["current_bill_due_date"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_accounts_attaches_current_bill(
+    client: AsyncClient, auth_headers, session: AsyncSession, test_user,
+):
+    """GET /accounts also carries the bill amount, so the accounts page can
+    show the fatura in the list without a per-card round trip."""
+    cc = await _make_cc_account(session, test_user.id, "Cartão")
+    await _make_bill(
+        session, test_user.id, cc.id,
+        external_id="b-next", due_date=_date(2099, 5, 5), total="321.00",
+    )
+
+    resp = await client.get("/api/accounts", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    cc_payload = next(a for a in data if a["name"] == "Cartão")
+    assert cc_payload["current_bill_total"] == 321.0
+    assert cc_payload["current_bill_due_date"] == "2099-05-05"

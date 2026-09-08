@@ -64,6 +64,11 @@ class AccountRead(AccountBase):
     payment_due_day: Optional[int] = None
     next_close_date: Optional[date] = None
     next_due_date: Optional[date] = None
+    # The credit-card bill the user is about to pay (synced bills feed,
+    # issue #92). Only present for credit_card accounts with bills; list
+    # surfaces show this instead of the lifetime balance when set.
+    current_bill_total: Optional[float] = None
+    current_bill_due_date: Optional[date] = None
     minimum_payment: Optional[float] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None

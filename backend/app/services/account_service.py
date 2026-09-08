@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from datetime import date as _Date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
@@ -118,10 +119,50 @@ async def get_accounts(session: AsyncSession, workspace_id: uuid.UUID, include_c
         query = query.where(Account.is_closed == False)
     query = query.order_by(Account.name)
     result = await session.execute(query)
-    return [
-            serialize_account(acc, current_balance, previous_balance, connection)
-            for acc, connection, current_balance, previous_balance in result.all()
-        ]
+    accounts = [
+        serialize_account(acc, current_balance, previous_balance, connection)
+        for acc, connection, current_balance, previous_balance in result.all()
+    ]
+    await attach_current_bill(session, accounts)
+    return accounts
+
+
+async def attach_current_bill(
+    session: AsyncSession,
+    accounts: list[dict],
+) -> None:
+    """Attach the current (next unpaid) credit-card bill to each CC account dict.
+
+    For credit cards with synced bills (Pluggy /bills, issue #92), expose the
+    bill the user is about to pay — its total_amount and due_date — so list
+    surfaces can show "how much is due now" instead of the lifetime balance.
+    Accounts without bills keep `current_bill_total`/`current_bill_due_date`
+    unset; callers fall back to cycle math (and the frontend to
+    current_balance).
+    """
+    cc_ids = [a["id"] for a in accounts if a["type"] == "credit_card"]
+    if not cc_ids:
+        return
+    result = await session.execute(
+        select(CreditCardBill)
+        .where(CreditCardBill.account_id.in_(cc_ids))
+        .order_by(CreditCardBill.due_date)
+    )
+    by_account: dict[uuid.UUID, list[CreditCardBill]] = defaultdict(list)
+    for bill in result.scalars().all():
+        by_account[bill.account_id].append(bill)
+    today = _Date.today()
+    for acc in accounts:
+        if acc["type"] != "credit_card":
+            continue
+        account_bills = by_account.get(acc["id"], [])
+        if not account_bills:
+            continue
+        # Current bill = the next one due today or later; if every known bill
+        # is past due, the most recent (the one still owed).
+        current = next((b for b in account_bills if b.due_date >= today), account_bills[-1])
+        acc["current_bill_total"] = float(current.total_amount)
+        acc["current_bill_due_date"] = current.due_date
 
 
 def _institution_name(connection: Optional[BankConnection]) -> Optional[str]:

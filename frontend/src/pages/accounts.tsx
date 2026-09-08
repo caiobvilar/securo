@@ -250,9 +250,13 @@ export default function AccountsPage() {
               <div className="divide-y divide-muted">
                 {manualAccounts.map((acc) => {
                   const cfg = getAccountTypeConfig(acc.type)
-                  const bal = Number(acc.current_balance)
                   const isCC = acc.type === 'credit_card'
-                  const dueIn = isCC ? daysUntil(acc.next_due_date) : null
+                  // CC shows the current bill (fatura) when a synced bill
+                  // exists; otherwise fall back to the lifetime balance.
+                  const bal = isCC && acc.current_bill_total != null
+                    ? Number(acc.current_bill_total)
+                    : Number(acc.current_balance)
+                  const dueIn = isCC ? daysUntil(acc.current_bill_due_date ?? acc.next_due_date) : null
                   const dueText =
                     dueIn == null ? null
                       : dueIn < 0 ? t('accounts.overdue')
@@ -393,9 +397,13 @@ export default function AccountsPage() {
                       <div className="divide-y divide-muted">
                         {connAccounts.map((acc) => {
                           const cfg = getAccountTypeConfig(acc.type)
-                          const bal = Number(acc.current_balance)
                           const isCC = acc.type === 'credit_card'
-                          const dueIn = isCC ? daysUntil(acc.next_due_date) : null
+                          // CC shows the current bill (fatura) when a synced
+                          // bill exists; otherwise fall back to lifetime balance.
+                          const bal = isCC && acc.current_bill_total != null
+                            ? Number(acc.current_bill_total)
+                            : Number(acc.current_balance)
+                          const dueIn = isCC ? daysUntil(acc.current_bill_due_date ?? acc.next_due_date) : null
                           const dueText =
                             dueIn == null ? null
                               : dueIn < 0 ? t('accounts.overdue')

@@ -166,6 +166,12 @@ services:
   mcp-server:
     <<: *backend-base
     profiles: [agents]
+    # Pin to the compose default network explicitly: guarantees that both the
+    # backend (AGENTS_BUILTIN_MCP_URL=http://mcp-server:8765/mcp) and external
+    # clients can reach the builtin MCP server after a recreate, instead of
+    # silently ending up isolated from the stack network.
+    networks:
+      - default
     command: uvicorn mcp_server.main:app --host 0.0.0.0 --port 8765
     ports:
       - "${AGENTS_MCP_EXTERNAL_HOST_PORT:-127.0.0.1:8765}:8765"
